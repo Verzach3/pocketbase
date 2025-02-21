@@ -84,11 +84,9 @@ func realtimeConnect(e *core.RequestEvent) error {
 			Data: []byte(`{"clientId":"` + ce.Client.Id() + `"}`),
 		}
 		connectMsgErr := ce.App.OnRealtimeMessageSend().Trigger(connectMsgEvent, func(me *core.RealtimeMessageEvent) error {
-			me.Response.Write([]byte("id:" + me.Client.Id() + "\n"))
-			me.Response.Write([]byte("event:" + me.Message.Name + "\n"))
-			me.Response.Write([]byte("data:"))
-			me.Response.Write(me.Message.Data)
-			me.Response.Write([]byte("\n\n"))
+			if err := writeSSEMessage(me.Response, me.Client.Id(), me.Message.Name, me.Message.Data); err != nil {
+				return err
+			}
 			return me.Flush()
 		})
 		if connectMsgErr != nil {
@@ -123,11 +121,9 @@ func realtimeConnect(e *core.RequestEvent) error {
 				msgEvent.Client = ce.Client
 				msgEvent.Message = &msg
 				msgErr := ce.App.OnRealtimeMessageSend().Trigger(msgEvent, func(me *core.RealtimeMessageEvent) error {
-					me.Response.Write([]byte("id:" + me.Client.Id() + "\n"))
-					me.Response.Write([]byte("event:" + me.Message.Name + "\n"))
-					me.Response.Write([]byte("data:"))
-					me.Response.Write(me.Message.Data)
-					me.Response.Write([]byte("\n\n"))
+					if err := writeSSEMessage(me.Response, me.Client.Id(), me.Message.Name, me.Message.Data); err != nil {
+						return err
+					}
 					return me.Flush()
 				})
 				if msgErr != nil {
@@ -151,6 +147,24 @@ func realtimeConnect(e *core.RequestEvent) error {
 			}
 		}
 	})
+}
+
+func writeSSEMessage(w http.ResponseWriter, clientId string, msgName string, msgData []byte) error {
+	parts := [][]byte{
+		[]byte("id:" + clientId + "\n"),
+		[]byte("event:" + msgName + "\n"),
+		[]byte("data:"),
+		msgData,
+		[]byte("\n\n"),
+	}
+
+	for _, part := range parts {
+		if _, err := w.Write(part); err != nil {
+			return fmt.Errorf("failed to write SSE message: %w", err)
+		}
+	}
+
+	return nil
 }
 
 type realtimeSubscribeForm struct {
